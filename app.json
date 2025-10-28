@@ -1,29 +1,39 @@
 {
   "expo": {
-    "name": "myProject",
-    "slug": "myProject",
+    "name": "VahanRent",
+    "slug": "vahan-rent",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/logoV.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
+
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/logoV.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
+
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.vahanrent.app",
+      "infoPlist": {
+        "CFBundleDisplayName": "VahanRent"
+      }
     },
+
     "android": {
+      "package": "com.vahanrent.app",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/logoV.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "permissions": ["INTERNET"]
     },
+
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/logoV.png"
     }
   }
 }
