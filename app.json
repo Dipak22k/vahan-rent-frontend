@@ -7,13 +7,11 @@
     "icon": "./assets/logoV.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
-
     "splash": {
       "image": "./assets/logoV.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
-
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.vahanrent.app",
@@ -21,19 +19,23 @@
         "CFBundleDisplayName": "VahanRent"
       }
     },
-
     "android": {
       "package": "com.vahanrent.app",
+      "usesCleartextTraffic": true,
       "adaptiveIcon": {
         "foregroundImage": "./assets/logoV.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "permissions": ["INTERNET"]
+      "permissions": [
+        "INTERNET"
+      ]
     },
-
     "web": {
       "favicon": "./assets/logoV.png"
-    }
+    },
+    "plugins": [
+      "expo-audio"
+    ]
   }
 }

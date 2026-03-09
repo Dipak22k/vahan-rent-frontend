@@ -1,194 +1,149 @@
 import React, { useState } from "react";
 import {
   View,
-  Text,
-  StyleSheet,
-  TextInput,
-  TouchableOpacity,
-  ScrollView,
-  Image,
-  Alert,
+ Text,
+ StyleSheet,
+ TouchableOpacity,
+ TextInput,
+ ScrollView,
+ Alert,
 } from "react-native";
-import * as ImagePicker from "expo-image-picker";
-import TopBar from "./TopBar";
+import TopBar from "../../components/common/TopBar";
+import { useRole } from "../../context/RoleContext";
 
-export default function AddCarScreen({ navigation }) {
-  const [carData, setCarData] = useState({
-    name: "",
-    modelYear: "",
-    regNumber: "",
+export default function AddCar() {
+  const { role } = useRole();
+
+  const [form, setForm] = useState({
+    carName: "",
+    pricePerDay: "",
     fuelType: "",
     transmission: "",
     seats: "",
-    pricePerDay: "",
-    description: "",
+    insuranceProvider: "",
+    policyNumber: "",
+    insuranceExpiry: "",
   });
 
-  const [images, setImages] = useState([]);
+  if (role !== "lender") {
+    return (
+      <View style={styles.centered}>
+        <Text style={styles.deniedText}>
+          Only lenders can list vehicles 🚫
+        </Text>
+      </View>
+    );
+  }
 
-  // ✅ Pick image from gallery or camera
-  const pickImage = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert("Permission required", "Allow access to photos to upload images.");
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsMultipleSelection: true,
-      quality: 0.7,
-    });
-
-    if (!result.canceled) {
-      const selected = result.assets.map((asset) => ({ uri: asset.uri }));
-      setImages([...images, ...selected]);
-    }
+  const handleChange = (key, value) => {
+    setForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  // ✅ Handle Save Vehicle
-  const handleSaveVehicle = () => {
-    if (
-      !carData.name ||
-      !carData.modelYear ||
-      !carData.regNumber ||
-      !carData.fuelType ||
-      !carData.transmission ||
-      !carData.seats ||
-      !carData.pricePerDay
-    ) {
-      Alert.alert("Missing Fields", "Please fill all required fields.");
+  const handleSubmit = () => {
+    const requiredFields = [
+      "carName",
+      "pricePerDay",
+      "fuelType",
+      "transmission",
+      "seats",
+      "insuranceProvider",
+      "policyNumber",
+      "insuranceExpiry",
+    ];
+
+    const missing = requiredFields.find((f) => !form[f]);
+
+    if (missing) {
+      Alert.alert("Missing Details", "Please fill all mandatory fields.");
       return;
     }
 
-    if (images.length < 3) {
-      Alert.alert("Add Images", "Please upload at least 3 images of the car.");
-      return;
-    }
+    Alert.alert("Success ✅", "Vehicle listed successfully (mock).");
 
-    console.log("🚘 Car Saved:", { ...carData, images });
-    Alert.alert("Success", "Vehicle added successfully!", [
-      {
-        text: "OK",
-        onPress: () => navigation.goBack(),
-      },
-    ]);
+    console.log("Vehicle Data:", form);
   };
 
   return (
     <View style={styles.container}>
-      <TopBar
-        username="Rahul"
-        onNotificationPress={() => navigation.navigate("Notifications")}
-        onProfilePress={() => navigation.navigate("Profile")}
-      />
+      <TopBar username="List New Vehicle" />
 
-      <ScrollView contentContainerStyle={styles.form}>
-        <Text style={styles.heading}>Add New Vehicle</Text>
+      <ScrollView contentContainerStyle={styles.content}>
+        <Text style={styles.heading}>Add New Vehicle 🚘</Text>
 
-        {/* Car Details Inputs */}
-        {[
-          { key: "name", placeholder: "Car Name (e.g. Hyundai i20)" },
-          { key: "modelYear", placeholder: "Model Year (e.g. 2023)" },
-          { key: "regNumber", placeholder: "Registration Number (e.g. KA03AB1234)" },
-          { key: "fuelType", placeholder: "Fuel Type (Petrol / Diesel / Electric)" },
-          { key: "transmission", placeholder: "Transmission (Manual / Automatic)" },
-          { key: "seats", placeholder: "Number of Seats (e.g. 5)" },
-          { key: "pricePerDay", placeholder: "Price Per Day (₹)" },
-        ].map((field) => (
-          <TextInput
-            key={field.key}
-            style={styles.input}
-            placeholder={field.placeholder}
-            placeholderTextColor="#888"
-            value={carData[field.key]}
-            onChangeText={(text) => setCarData({ ...carData, [field.key]: text })}
-          />
-        ))}
+        {/* Vehicle Info */}
+        <Input label="Car Name" onChangeText={(v) => handleChange("carName", v)} />
+        <Input label="Price Per Day (₹)" keyboardType="numeric" onChangeText={(v) => handleChange("pricePerDay", v)} />
+        <Input label="Fuel Type (Petrol/Diesel/Electric)" onChangeText={(v) => handleChange("fuelType", v)} />
+        <Input label="Transmission (Manual/Automatic)" onChangeText={(v) => handleChange("transmission", v)} />
+        <Input label="Seats" keyboardType="numeric" onChangeText={(v) => handleChange("seats", v)} />
 
-        <TextInput
-          style={[styles.input, { height: 90 }]}
-          placeholder="Car Description..."
-          placeholderTextColor="#888"
-          multiline
-          value={carData.description}
-          onChangeText={(text) => setCarData({ ...carData, description: text })}
-        />
+        {/* Insurance Section */}
+        <Text style={styles.sectionTitle}>Insurance Details (Mandatory) 🛡️</Text>
 
-        {/* Upload Car Images */}
-        <View style={styles.uploadSection}>
-          <Text style={styles.subHeading}>Upload Car Images (min. 3)</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {images.map((img, index) => (
-              <Image key={index} source={{ uri: img.uri }} style={styles.uploadedImage} />
-            ))}
-            <TouchableOpacity style={styles.uploadButton} onPress={pickImage}>
-              <Text style={styles.uploadText}>+ Add Image</Text>
-            </TouchableOpacity>
-          </ScrollView>
-        </View>
+        <Input label="Insurance Provider" onChangeText={(v) => handleChange("insuranceProvider", v)} />
+        <Input label="Policy Number" onChangeText={(v) => handleChange("policyNumber", v)} />
+        <Input label="Insurance Expiry Date" placeholder="YYYY-MM-DD" onChangeText={(v) => handleChange("insuranceExpiry", v)} />
 
-        {/* Save Button */}
-        <TouchableOpacity style={styles.saveButton} onPress={handleSaveVehicle}>
-          <Text style={styles.saveText}>Save Vehicle</Text>
+        <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
+          <Text style={styles.submitText}>List Vehicle</Text>
         </TouchableOpacity>
-
-        <View style={{ height: 100 }} />
       </ScrollView>
     </View>
   );
 }
 
+/* Reusable Input */
+const Input = ({ label, ...props }) => (
+  <View style={styles.inputGroup}>
+    <Text style={styles.label}>{label}</Text>
+    <TextInput style={styles.input} {...props} />
+  </View>
+);
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#EFF4F8" },
-  form: { padding: 20 },
+  container: { flex: 1, backgroundColor: "#F7F9FC" },
+
+  content: { padding: 20 },
+
   heading: {
     fontSize: 22,
-    fontWeight: "700",
+    fontWeight: "800",
     color: "#1E3A8A",
     marginBottom: 20,
   },
+
+  sectionTitle: {
+    marginTop: 25,
+    marginBottom: 10,
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#4B44B9",
+  },
+
+  inputGroup: { marginBottom: 15 },
+
+  label: { marginBottom: 5, fontWeight: "600", color: "#374151" },
+
   input: {
     backgroundColor: "#fff",
     borderRadius: 10,
+    paddingHorizontal: 12,
+    height: 45,
     borderWidth: 1,
     borderColor: "#E5E7EB",
-    paddingVertical: 12,
-    paddingHorizontal: 15,
-    marginBottom: 12,
-    fontSize: 15,
-    color: "#111827",
   },
-  uploadSection: {
-    marginTop: 10,
-  },
-  subHeading: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#1E3A8A",
-    marginBottom: 10,
-  },
-  uploadedImage: {
-    width: 100,
-    height: 80,
-    borderRadius: 10,
-    marginRight: 10,
-  },
-  uploadButton: {
-    width: 100,
-    height: 80,
-    backgroundColor: "#E5E7EB",
-    borderRadius: 10,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  uploadText: { color: "#4B44B9", fontWeight: "700" },
-  saveButton: {
+
+  submitButton: {
+    marginTop: 30,
     backgroundColor: "#4B44B9",
-    borderRadius: 10,
     paddingVertical: 14,
+    borderRadius: 10,
     alignItems: "center",
-    marginTop: 25,
   },
-  saveText: { color: "#fff", fontSize: 16, fontWeight: "700" },
+
+  submitText: { color: "#fff", fontWeight: "800", fontSize: 16 },
+
+  centered: { flex: 1, alignItems: "center", justifyContent: "center" },
+
+  deniedText: { fontSize: 16, fontWeight: "700", color: "red" },
 });

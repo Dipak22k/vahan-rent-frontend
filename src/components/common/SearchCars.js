@@ -9,6 +9,8 @@ import {
   Image,
 } from "react-native";
 import TopBar from "./TopBar";
+
+// (MOCK_CARS remains the same)
 const MOCK_CARS = [
   {
     id: "1",
@@ -55,11 +57,14 @@ const MOCK_CARS = [
 export default function SearchCars({ navigation }) {
   const [query, setQuery] = useState("");
 
-  // 🔍 Filter cars by name or fuel type
+  // 🚗 Updated Filtering Logic
   const filteredCars = MOCK_CARS.filter(
     (car) =>
+      // Existing filters (name and fuel)
       car.name.toLowerCase().includes(query.toLowerCase()) ||
-      car.fuel.toLowerCase().includes(query.toLowerCase())
+      car.fuel.toLowerCase().includes(query.toLowerCase()) ||
+      // ✨ New filter: search by car ID
+      car.id.includes(query),
   );
 
   return (
@@ -72,22 +77,28 @@ export default function SearchCars({ navigation }) {
       <View style={styles.searchContainer}>
         <TextInput
           style={styles.searchInput}
-          placeholder="Search cars by name or fuel type..."
+          placeholder="Search cars by name, fuel type, or ID..."
           placeholderTextColor="#888"
           value={query}
           onChangeText={setQuery}
+          // Note: You can optionally set keyboardType="numeric" if you only want to search by ID,
+          // but since we search by name/fuel too, 'default' is better.
         />
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {filteredCars.length === 0 ? (
-          <Text style={styles.noResults}>No cars found. Try another search!</Text>
+          <Text style={styles.noResults}>
+            No cars found. Try another search!
+          </Text>
         ) : (
           filteredCars.map((car) => (
             <View key={car.id} style={styles.carCard}>
               <Image source={car.image} style={styles.carImage} />
               <View style={styles.carInfo}>
-                <Text style={styles.carName}>{car.name}</Text>
+                <Text style={styles.carName}>
+                  {car.name} (ID: {car.id}) {/* Display the ID for clarity */}
+                </Text>
                 <Text style={styles.carDetails}>
                   {car.seats} seats · {car.fuel}
                 </Text>

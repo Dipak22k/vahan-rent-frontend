@@ -1,5 +1,12 @@
 import React from "react";
-import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView } from "react-native";
+import {
+  View,
+  Text,
+  StyleSheet,
+  Image,
+  TouchableOpacity,
+  ScrollView,
+} from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 
@@ -21,7 +28,10 @@ export default function CarDetails() {
   return (
     <View style={styles.container}>
       {/* Back button */}
-      <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+      <TouchableOpacity
+        style={styles.backButton}
+        onPress={() => navigation.goBack()}
+      >
         <Ionicons name="arrow-back" size={26} color="#fff" />
       </TouchableOpacity>
 
@@ -43,7 +53,10 @@ export default function CarDetails() {
           {`The ${car.name} is a comfortable and efficient vehicle designed for both city and long drives. With modern interiors, safety features, and top-tier mileage, it’s a perfect pick for travelers.`}
         </Text>
 
-        <TouchableOpacity style={styles.bookButton} onPress={() => alert("Booking feature coming soon!")}>
+        <TouchableOpacity
+          style={styles.bookButton}
+          onPress={() => alert("Booking feature coming soon!")}
+        >
           <Text style={styles.bookText}>Book Now</Text>
         </TouchableOpacity>
       </ScrollView>

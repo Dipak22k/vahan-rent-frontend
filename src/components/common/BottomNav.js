@@ -1,59 +1,157 @@
-import React from "react";
-import { View, TouchableOpacity, StyleSheet, Image } from "react-native";
+import React, { useEffect } from "react";
+import {
+  View,
+  TouchableOpacity,
+  StyleSheet,
+  Image,
+  Dimensions,
+} from "react-native";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from "react-native-reanimated";
+import { useNavigation } from "@react-navigation/native";
+import { useTheme } from "../../context/ThemeContext";   // ✅ IMPORTANT PATH
 
-export default function BottomNav({ currentTab, onTabPress }) {
-  const tabs = [
-    { key: "home", icon: require("../../../assets/icons/home-icon-silhouette.png") },
-    { key: "tracking", icon: require("../../../assets/icons/real-time-tracking.png") },
-    { key: "history", icon: require("../../../assets/icons/file.png") },
-    { key: "contracts", icon: require("../../../assets/icons/contract.png") },
-    { key: "insurance", icon: require("../../../assets/icons/insurance.png") },
-  ];
+const { width } = Dimensions.get("window");
+const TAB_BAR_WIDTH = width * 0.85;
+
+const TABS = [
+  {
+    key: "Dashboard",
+    icon: require("../../../assets/icons/home-icon-silhouette.png"),
+  },
+  {
+    key: "Tracking",
+    icon: require("../../../assets/icons/real-time-tracking.png"),
+  },
+  { key: "Chat", icon: require("../../../assets/icons/chat.png") },
+  { key: "Contracts", icon: require("../../../assets/icons/contract.png") },
+  { key: "Insurance", icon: require("../../../assets/icons/insurance.png") },
+];
+
+const TAB_WIDTH = TAB_BAR_WIDTH / TABS.length;
+
+export default function BottomNav({ currentTab }) {
+  const navigation = useNavigation();
+  const { theme } = useTheme();                      // ✅ THEME ACCESS
+  const translateX = useSharedValue(0);
+
+  useEffect(() => {
+    const index = TABS.findIndex((t) => t.key === currentTab);
+    const safeIndex = index === -1 ? 0 : index;
+
+    translateX.value = withSpring(safeIndex * TAB_WIDTH, {
+      damping: 15,
+      stiffness: 120,
+    });
+  }, [currentTab]);
+
+  const rnStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: translateX.value }],
+  }));
+
+  const handlePress = (screenName) => {
+    if (screenName === "Chat") {
+      navigation.navigate("ChatList");
+      return;
+    }
+
+    navigation.navigate(screenName);
+  };
 
   return (
-    <View style={styles.container}>
-      {tabs.map((tab) => (
-        <TouchableOpacity
-          key={tab.key}
-          onPress={() => onTabPress(tab.key)}
+    <View style={styles.outerContainer}>
+      <View
+        style={[
+          styles.container,
+          {
+            backgroundColor: theme.card,          // ✅ Dynamic Background
+            shadowColor: theme.mode === "dark" ? "#000" : "#111",
+          },
+        ]}
+      >
+        {/* ✅ Active Pill */}
+        <Animated.View
           style={[
-            styles.tab,
-            currentTab === tab.key && styles.activeTab,
+            styles.activePill,
+            rnStyle,
+            {
+              width: TAB_WIDTH - 10,
+              backgroundColor: theme.primary + "22",   // ✅ Soft Tint
+            },
           ]}
-        >
-          <Image
-            source={tab.icon}
-            style={[styles.icon, currentTab === tab.key && styles.activeIcon]}
-          />
-        </TouchableOpacity>
-      ))}
+        />
+
+        {TABS.map((tab) => {
+          const isActive = currentTab === tab.key;
+
+          return (
+            <TouchableOpacity
+              key={tab.key}
+              onPress={() => handlePress(tab.key)}
+              style={styles.tab}
+              activeOpacity={0.8}
+            >
+              <Image
+                source={tab.icon}
+                style={[
+                  styles.icon,
+                  {
+                    tintColor: isActive
+                      ? theme.primary              // ✅ Active Icon
+                      : theme.subText,             // ✅ Inactive Icon
+                  },
+                ]}
+              />
+            </TouchableOpacity>
+          );
+        })}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  outerContainer: {
+    position: "absolute",
+    bottom: 25,
+    width: "100%",
+    alignItems: "center",
+  },
+
   container: {
+    width: TAB_BAR_WIDTH,
+    height: 65,
+    borderRadius: 30,
     flexDirection: "row",
+    alignItems: "center",
     justifyContent: "space-around",
-    backgroundColor: "#fff",
-    paddingVertical: 10,
-    borderTopWidth: 1,
-    borderColor: "#E5E7EB",
-    elevation: 6,
+
+    elevation: 8,
+
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
   },
+
+  activePill: {
+    position: "absolute",
+    height: 45,
+    borderRadius: 25,
+    left: 5,
+  },
+
   tab: {
-    padding: 8,
-    borderRadius: 10,
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  activeTab: {
-    backgroundColor: "#E6E7F8",
-  },
+
   icon: {
-    width: 26,
-    height: 26,
-    tintColor: "#6B7280",
-  },
-  activeIcon: {
-    tintColor: "#4B44B9",
+    width: 22,
+    height: 22,
+    resizeMode: "contain",
   },
 });
