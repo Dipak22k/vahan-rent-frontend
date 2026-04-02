@@ -9,247 +9,286 @@ import {
   Image,
   Alert,
   ScrollView,
-  KeyboardAvoidingView,
-  Platform,
+  Dimensions,
+  ActivityIndicator,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import CONFIG from "../api/config";
 
-import KYCHeader from "../../src/kyc/KYCHeader";
+const { width } = Dimensions.get("window");
 
-export default function KYCMasterScreen({ route, navigation }) {
-  const { userRole } = route.params || { userRole: "borrower" };
-
-  const borrowerSteps = ["Basic", "Identity", "License", "Selfie", "Contact"];
-  const lenderSteps = ["Basic", "Identity", "RC", "Insurance", "Photos", "Bank"];
-  const steps = userRole === "borrower" ? borrowerSteps : lenderSteps;
-
-  const [step, setStep] = useState(0);
+export default function KYCMasterScreen({ navigation }) {
+  const steps = ["Basic", "Identity", "Selfie", "Review"];
+  const [currentStep, setCurrentStep] = useState(0);
   const [form, setForm] = useState({});
+  const [loading, setLoading] = useState(false);
 
-  const updateField = (key, value) => {
-    setForm({ ...form, [key]: value });
-  };
+  const updateField = (key, value) => setForm({ ...form, [key]: value });
 
   const pickImage = async (fieldKey) => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permission Denied", "We need camera access to proceed.");
+      return;
+    }
+
     Alert.alert("Upload Document", "Choose source", [
-      { text: "Camera", onPress: () => openCamera(fieldKey) },
-      { text: "Gallery", onPress: () => openGallery(fieldKey) },
+      { text: "Camera", onPress: () => openImageSource(fieldKey, "camera") },
+      { text: "Gallery", onPress: () => openImageSource(fieldKey, "gallery") },
       { text: "Cancel", style: "cancel" },
     ]);
   };
 
-  const openCamera = async (fieldKey) => {
-    const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: true,
-      quality: 0.7,
-    });
+  const openImageSource = async (fieldKey, type) => {
+    const options = { allowsEditing: true, quality: 0.7, aspect: [4, 3] };
+    const result = type === "camera" 
+      ? await ImagePicker.launchCameraAsync(options)
+      : await ImagePicker.launchImageLibraryAsync(options);
 
     if (!result.canceled) updateField(fieldKey, result.assets[0].uri);
   };
 
-  const openGallery = async (fieldKey) => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      allowsEditing: true,
-      quality: 0.7,
+  const submitKYC = async () => {
+  setLoading(true);
+
+  try {
+    const token = await AsyncStorage.getItem("userToken");
+
+    // STEP 1: Upload ID
+    const idData = new FormData();
+    idData.append("idImage", {
+      uri: form.idImage,
+      name: "id.jpg",
+      type: "image/jpeg",
     });
 
-    if (!result.canceled) updateField(fieldKey, result.assets[0].uri);
-  };
+    await fetch(`${CONFIG.BASE_URL}${CONFIG.ENDPOINTS.KYC_UPLOAD_ID}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: idData,
+    });
 
-  /* 🔥 UPDATED FUNCTION */
-  const nextStep = async () => {
-    if (step < steps.length - 1) {
-      setStep(step + 1);
+    // STEP 2: Upload Selfie
+    const selfieData = new FormData();
+    selfieData.append("selfieImage", {
+      uri: form.selfieImage,
+      name: "selfie.jpg",
+      type: "image/jpeg",
+    });
+
+    await fetch(`${CONFIG.BASE_URL}${CONFIG.ENDPOINTS.KYC_UPLOAD_SELFIE}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      body: selfieData,
+    });
+
+    // STEP 3: VERIFY KYC (🔥 IMPORTANT)
+    const verifyRes = await fetch(`${CONFIG.BASE_URL}${CONFIG.ENDPOINTS.KYC_VERIFY}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    const text = await verifyRes.text();
+console.log("VERIFY RESPONSE RAW:", text);
+
+let verifyData;
+try {
+  verifyData = JSON.parse(text);
+} catch (e) {
+  console.log("NOT JSON RESPONSE ❌");
+  throw new Error("Server not returning JSON");
+}
+
+    // 🔥 HANDLE RESPONSE
+    if (verifyData.message === "KYC_SUCCESS") {
+      // ✅ Update userData
+      const userData = JSON.parse(await AsyncStorage.getItem("userData"));
+      userData.kyc = verifyData.kyc;
+
+      await AsyncStorage.setItem("userData", JSON.stringify(userData));
+
+      // ✅ Notification
+      await addNotification("KYC verified successfully ✅");
+
+      Alert.alert("Success", "KYC Verified 🎉");
+
     } else {
-      try {
-        const storedUser = await AsyncStorage.getItem("userData");
-        const user = JSON.parse(storedUser);
-
-        await fetch(
-          `http://10.52.141.172:5000/api/user/submit-kyc/${user._id}`,
-          {
-            method: "PUT",
-            headers: {
-              "Content-Type": "application/json",
-            },
-          }
-        );
-
-        Alert.alert(
-          "Success",
-          "KYC Submitted for Review ✅",
-          [
-            {
-              text: "OK",
-              onPress: () => navigation.navigate("Dashboard"),
-            },
-          ]
-        );
-      } catch (error) {
-        console.log("KYC Submit Error:", error);
-        Alert.alert("Error", "Something went wrong.");
-      }
+      await addNotification("KYC failed ❌ Please try again");
+      Alert.alert("Failed", "Face not matched");
     }
+
+  } catch (err) {
+    console.log(err);
+    Alert.alert("Error", "KYC process failed");
+  } finally {
+    setLoading(false);
+  }
+};
+  const nextStep = () => {
+    if (currentStep < steps.length - 1) setCurrentStep(currentStep + 1);
+    else submitKYC();
   };
 
-  const renderContent = () => {
-    if (step === 0)
-      return (
-        <View style={styles.stepContainer}>
-          <Text style={styles.stepTitle}>Let's start with basics</Text>
-          <Input label="Full Name" placeholder="John Doe" onChange={(v) => updateField("fullName", v)} />
-          <Input label="Phone Number" placeholder="+91..." keyboardType="phone-pad" onChange={(v) => updateField("phone", v)} />
-        </View>
-      );
-
-    if (step === 1)
-      return (
-        <View style={styles.stepContainer}>
-          <Text style={styles.stepTitle}>Identity Verification</Text>
-          <Input label="ID Type" placeholder="Aadhaar / Passport" onChange={(v) => updateField("idType", v)} />
-          <UploadBox label="Front Side of ID" image={form.idImage} onPress={() => pickImage("idImage")} />
-        </View>
-      );
-
-    return (
-      <View style={styles.stepContainer}>
-        <Text style={styles.stepTitle}>{steps[step]}</Text>
-        <Text style={styles.stepSub}>Please provide required details</Text>
-        <UploadBox label={`Upload ${steps[step]}`} image={form.genericImage} onPress={() => pickImage("genericImage")} />
-      </View>
-    );
+  const prevStep = () => {
+    if (currentStep > 0) setCurrentStep(currentStep - 1);
   };
+
+  // --- UI Components ---
+
+  const StepIndicator = () => (
+    <View style={styles.indicatorContainer}>
+      {steps.map((s, i) => (
+        <View key={i} style={styles.stepWrapper}>
+          <View style={[styles.dot, i <= currentStep && styles.activeDot]}>
+            {i < currentStep ? (
+              <Ionicons name="checkmark" size={12} color="white" />
+            ) : (
+              <Text style={[styles.dotText, i <= currentStep && styles.activeDotText]}>{i + 1}</Text>
+            )}
+          </View>
+          <Text style={[styles.stepLabel, i === currentStep && styles.activeLabel]}>{s}</Text>
+        </View>
+      ))}
+    </View>
+  );
 
   return (
     <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={{ flex: 1 }}
-      >
-        <KYCHeader title={`${steps[step]} Verification`} />
+      <View style={styles.header}>
+        <TouchableOpacity onPress={prevStep} disabled={currentStep === 0}>
+          <Ionicons name="arrow-back" size={24} color={currentStep === 0 ? "#CBD5E1" : "#1E293B"} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Verification</Text>
+        <View style={{ width: 24 }} />
+      </View>
 
-        <View style={styles.progressContainer}>
-          {steps.map((_, i) => (
-            <View
-              key={i}
-              style={[
-                styles.progressDot,
-                i <= step ? styles.activeDot : styles.inactiveDot,
-              ]}
-            />
-          ))}
-        </View>
+      <StepIndicator />
 
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          {renderContent()}
-        </ScrollView>
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        {currentStep === 0 && (
+          <View style={styles.stepContainer}>
+            <Text style={styles.title}>Basic Information</Text>
+            <Text style={styles.subtitle}>Please enter your legal name as it appears on your ID.</Text>
+            <Input label="Full Name" icon="person-outline" placeholder="John Doe" value={form.fullName} onChange={(v) => updateField("fullName", v)} />
+            <Input label="Phone Number" icon="call-outline" placeholder="+1 234 567 890" keyboardType="phone-pad" value={form.phone} onChange={(v) => updateField("phone", v)} />
+          </View>
+        )}
 
-        <View style={styles.footer}>
-          <TouchableOpacity
-            style={[
-              styles.mainBtn,
-              { backgroundColor: step === steps.length - 1 ? "#10B981" : "#4F46E5" },
-            ]}
-            onPress={nextStep}
-          >
+        {currentStep === 1 && (
+          <View style={styles.stepContainer}>
+            <Text style={styles.title}>Identity Document</Text>
+            <Text style={styles.subtitle}>Upload a clear photo of your Government ID or Passport.</Text>
+            <UploadBox image={form.idImage} onPress={() => pickImage("idImage")} title="National ID Card" />
+          </View>
+        )}
+
+        {currentStep === 2 && (
+          <View style={styles.stepContainer}>
+            <Text style={styles.title}>Selfie Check</Text>
+            <Text style={styles.subtitle}>Make sure your face is well-lit and clearly visible.</Text>
+            <UploadBox image={form.selfieImage} onPress={() => pickImage("selfieImage")} title="Take a Selfie" isCircle />
+          </View>
+        )}
+
+        {currentStep === 3 && (
+          <View style={styles.stepContainer}>
+            <Text style={styles.title}>Review</Text>
+            <Text style={styles.subtitle}>Double check your details before submitting.</Text>
+            <View style={styles.reviewCard}>
+              <Text style={styles.reviewText}>**Name:** {form.fullName || "Not provided"}</Text>
+              <Text style={styles.reviewText}>**Phone:** {form.phone || "Not provided"}</Text>
+              <Text style={styles.reviewText}>**Documents:** Ready ✅</Text>
+            </View>
+          </View>
+        )}
+      </ScrollView>
+
+      <View style={styles.footer}>
+        <TouchableOpacity 
+          style={[styles.mainBtn, loading && { opacity: 0.7 }]} 
+          onPress={nextStep}
+          disabled={loading}
+        >
+          {loading ? (
+            <ActivityIndicator color="white" />
+          ) : (
             <Text style={styles.mainBtnText}>
-              {step === steps.length - 1 ? "Finish Application" : "Continue"}
+              {currentStep === steps.length - 1 ? "Submit Verification" : "Continue"}
             </Text>
-            <Ionicons name="chevron-forward" size={18} color="white" />
-          </TouchableOpacity>
-        </View>
-      </KeyboardAvoidingView>
+          )}
+        </TouchableOpacity>
+      </View>
     </SafeAreaView>
   );
 }
 
-/* SMALL COMPONENTS */
-
-const Input = ({ label, placeholder, onChange, keyboardType }) => (
+const Input = ({ label, icon, ...props }) => (
   <View style={styles.inputWrapper}>
-    <Text style={styles.label}>{label}</Text>
-    <TextInput
-      style={styles.input}
-      placeholder={placeholder}
-      placeholderTextColor="#9CA3AF"
-      onChangeText={onChange}
-      keyboardType={keyboardType}
-    />
+    <Text style={styles.inputLabel}>{label}</Text>
+    <View style={styles.inputField}>
+      <Ionicons name={icon} size={20} color="#64748B" style={{ marginRight: 10 }} />
+     <TextInput
+  style={{ flex: 1, height: 40 }}
+  placeholderTextColor="#94A3B8"
+  {...props}
+  onChangeText={props.onChange}
+/>
+    </View>
   </View>
 );
 
-const UploadBox = ({ label, image, onPress }) => (
-  <TouchableOpacity
-    style={[styles.uploadBox, image && styles.uploadBoxActive]}
+const UploadBox = ({ image, onPress, title, isCircle }) => (
+  <TouchableOpacity 
+    style={[styles.uploadBox, isCircle && { borderRadius: 100, width: 200, height: 200, alignSelf: 'center' }]} 
     onPress={onPress}
   >
     {image ? (
-      <Image source={{ uri: image }} style={styles.preview} />
+      <Image source={{ uri: image }} style={[styles.preview, isCircle && { borderRadius: 100 }]} />
     ) : (
-      <>
+      <View style={{ alignItems: 'center' }}>
         <View style={styles.iconCircle}>
-          <Ionicons name="cloud-upload-outline" size={28} color="#4F46E5" />
+          <Ionicons name="camera" size={32} color="#6366F1" />
         </View>
-        <Text style={styles.uploadText}>{label}</Text>
-        <Text style={styles.uploadSubtext}>JPG or PNG</Text>
-      </>
+        <Text style={styles.uploadText}>{title}</Text>
+      </View>
     )}
   </TouchableOpacity>
 );
 
-/* STYLES (UNCHANGED) */
-
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#FFFFFF" },
-  progressContainer: { flexDirection: "row", paddingHorizontal: 24, marginTop: 10 },
-  progressDot: { height: 4, flex: 1, marginHorizontal: 2, borderRadius: 2 },
-  activeDot: { backgroundColor: "#4F46E5" },
-  inactiveDot: { backgroundColor: "#E5E7EB" },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20 },
+  headerTitle: { fontSize: 18, fontWeight: '700', color: '#1E293B' },
   scrollContent: { padding: 24 },
-  stepContainer: {},
-  stepTitle: { fontSize: 24, fontWeight: "800", marginBottom: 10 },
-  stepSub: { color: "#6B7280", marginBottom: 20 },
+  indicatorContainer: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 30, marginBottom: 20 },
+  stepWrapper: { alignItems: 'center' },
+  dot: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#E2E8F0', justifyContent: 'center', alignItems: 'center', marginBottom: 4 },
+  activeDot: { backgroundColor: '#6366F1' },
+  dotText: { fontSize: 12, color: '#64748B', fontWeight: 'bold' },
+  activeDotText: { color: 'white' },
+  stepLabel: { fontSize: 10, color: '#94A3B8', fontWeight: '600' },
+  activeLabel: { color: '#6366F1' },
+  stepContainer: { flex: 1 },
+  title: { fontSize: 24, fontWeight: '800', color: '#1E293B', marginBottom: 8 },
+  subtitle: { fontSize: 15, color: '#64748B', marginBottom: 30, lineHeight: 22 },
   inputWrapper: { marginBottom: 20 },
-  label: { fontSize: 14, fontWeight: "600", marginBottom: 6 },
-  input: { backgroundColor: "#F3F4F6", borderRadius: 12, padding: 16, fontSize: 16 },
-  uploadBox: {
-    height: 180,
-    borderRadius: 16,
-    borderWidth: 2,
-    borderColor: "#E5E7EB",
-    borderStyle: "dashed",
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#FAFBFF",
-    overflow: "hidden",
-  },
-  uploadBoxActive: { borderStyle: "solid", borderColor: "#4F46E5" },
-  preview: { width: "100%", height: "100%" },
-  iconCircle: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: "#EEF2FF",
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 10,
-  },
-  uploadText: { fontSize: 15, fontWeight: "600" },
-  uploadSubtext: { fontSize: 12, color: "#9CA3AF" },
-  footer: { padding: 20, borderTopWidth: 1, borderTopColor: "#F3F4F6" },
-  mainBtn: {
-    flexDirection: "row",
-    height: 56,
-    borderRadius: 16,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  mainBtnText: {
-    color: "white",
-    fontSize: 16,
-    fontWeight: "700",
-    marginRight: 8,
-  },
+  inputLabel: { fontSize: 14, fontWeight: '600', color: '#475569', marginBottom: 8 },
+  inputField: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F8FAFC', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 12, paddingHorizontal: 15, paddingVertical: 10 },
+  uploadBox: { height: 180, backgroundColor: '#F8FAFC', borderRadius: 16, borderStyle: 'dashed', borderWidth: 2, borderColor: '#CBD5E1', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
+  iconCircle: { width: 60, height: 60, borderRadius: 30, backgroundColor: '#EEF2FF', justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
+  uploadText: { fontSize: 14, fontWeight: '600', color: '#6366F1' },
+  preview: { width: '100%', height: '100%', resizeMode: 'cover' },
+  reviewCard: { padding: 20, backgroundColor: '#F1F5F9', borderRadius: 12 },
+  reviewText: { fontSize: 16, color: '#334155', marginBottom: 10 },
+  footer: { padding: 20, borderTopWidth: 1, borderTopColor: '#F1F5F9' },
+  mainBtn: { backgroundColor: "#6366F1", paddingVertical: 16, borderRadius: 14, alignItems: "center", shadowColor: "#6366F1", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 5 },
+  mainBtnText: { color: "white", fontWeight: "700", fontSize: 16 },
 });

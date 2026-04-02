@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { resetPassword } from "../../src/api/authApi";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export default function ResetPasswordScreen({ navigation, route }) {
   const { email } = route.params;
@@ -57,11 +58,18 @@ export default function ResetPasswordScreen({ navigation, route }) {
 
       await resetPassword(normalizeEmail(email), trimmedPassword);
 
-      Alert.alert(
-        "Success 🎉",
-        "Password updated! Please login with your new password.",
-        [{ text: "Login", onPress: () => navigation.replace("Login") }]
-      );
+     Alert.alert(
+  "Success 🎉",
+  "Password updated! Please login with your new password.",
+  [
+    {
+      text: "Login",
+      onPress: async () => {
+        await AsyncStorage.multiRemove(["userData", "userToken"]);
+      },
+    },
+  ]
+);
     } catch (err) {
       console.log("RESET PASSWORD ERROR:", err);
 

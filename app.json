@@ -1,8 +1,11 @@
+
 {
   "expo": {
     "name": "VahanRent",
     "slug": "vahan-rent",
     "version": "1.0.0",
+    "owner": "kongaridipak",
+    "scheme": "vahanrent",
     "orientation": "portrait",
     "icon": "./assets/logoV.png",
     "userInterfaceStyle": "light",
@@ -28,14 +31,22 @@
       },
       "edgeToEdgeEnabled": true,
       "permissions": [
-        "INTERNET"
+        "INTERNET",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
       ]
     },
     "web": {
       "favicon": "./assets/logoV.png"
     },
     "plugins": [
-      "expo-audio"
-    ]
+      "expo-audio",
+      "expo-web-browser"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "1da7e6f7-1f36-4371-af0e-20e96cd8adfd"
+      }
+    }
   }
 }

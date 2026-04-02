@@ -5,45 +5,148 @@ import {
   FlatList,
   StyleSheet,
   TouchableOpacity,
-  Animated,
 } from "react-native";
 import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import TopBar from "./TopBar";
-import { useTheme } from "../../../src/context/ThemeContext"; // ✅ THEME ACCESS
+import { useTheme } from "../../../src/context/ThemeContext";
+import io from "socket.io-client";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import CONFIG from "../../../src/api/config";
+
+const socket = io(CONFIG.BASE_URL);
 
 export default function NotificationScreen({ navigation }) {
   const { theme } = useTheme();
   const [notifications, setNotifications] = useState([]);
 
-  useEffect(() => {
-    const sampleData = [
-      {
-        id: "1",
-        title: "KYC Verified",
-        message: "Your KYC verification was successful 🎉",
-        time: "2h ago",
+useEffect(() => {
+  // ================= SOCKET EVENTS =================
+
+  socket.on("chat_status_updated", (data) => {
+    if (data.status === "accepted") {
+      const newNotif = {
+        id: Date.now().toString(),
+        title: "Request Accepted",
+        message: "Lender accepted your request. You can now chat.",
+        time: "Now",
         type: "success",
         read: false,
-      },
-      {
-        id: "2",
-        title: "Contract Update",
-        message: "Your latest contract for 'Tata Nexon' has been approved.",
-        time: "5h ago",
-        type: "contract",
-        read: true,
-      },
-      {
-        id: "3",
-        title: "Insurance Renewal",
-        message: "Your vehicle insurance expires in 3 days. Renew now to avoid penalties.",
-        time: "Yesterday",
-        type: "warning",
-        read: true,
-      },
-    ];
-    setNotifications(sampleData);
-  }, []);
+        navigateTo: "Chat",
+        params: { lenderId: data.lenderId, carId: data.carId },
+      };
+
+      setNotifications((prev) => {
+        const updated = [newNotif, ...prev];
+        AsyncStorage.setItem("notifications", JSON.stringify(updated));
+        return updated;
+      });
+    }
+  });
+
+  socket.on("rent_confirmed", (data) => {
+    const newNotif = {
+      id: Date.now().toString(),
+      title: "Rent Confirmed",
+      message: "Your booking is confirmed. Pickup location shared.",
+      time: "Now",
+      type: "contract",
+      read: false,
+      navigateTo: "MyBookings",
+      params: { bookingId: data?.bookingId },
+    };
+
+    setNotifications((prev) => {
+      const updated = [newNotif, ...prev];
+      AsyncStorage.setItem("notifications", JSON.stringify(updated));
+      return updated;
+    });
+  });
+
+  // ================= KYC NOTIFICATIONS =================
+
+  const loadKYCNotifications = async () => {
+    try {
+      const stored =
+        JSON.parse(await AsyncStorage.getItem("notifications")) || [];
+
+      setNotifications(stored);
+    } catch (err) {
+      console.log("NOTIFICATION LOAD ERROR", err);
+    }
+  };
+
+  const checkKYCStatus = async () => {
+    try {
+      const userData = JSON.parse(await AsyncStorage.getItem("userData"));
+      const status = userData?.kyc?.status;
+
+      if (!status) return;
+
+      let message = "";
+      let type = "warning";
+
+      if (status === "pending") {
+        message = "Your KYC is under review ⏳";
+      } else if (status === "verified") {
+        message = "KYC verified successfully ✅";
+        type = "success";
+      } else if (status === "rejected") {
+        message = "KYC failed ❌ Please try again";
+      }
+
+      if (message) {
+        const newNotif = {
+          id: Date.now().toString(),
+          title: "KYC Update",
+          message,
+          time: "Now",
+          type,
+          read: false,
+        };
+
+        setNotifications((prev) => {
+          const updated = [newNotif, ...prev];
+          AsyncStorage.setItem("notifications", JSON.stringify(updated));
+          return updated;
+        });
+      }
+    } catch (err) {
+      console.log("KYC NOTIF ERROR", err);
+    }
+  };
+
+  loadKYCNotifications();
+  checkKYCStatus();
+
+  // ================= CLEANUP =================
+
+  return () => {
+    socket.off("chat_status_updated");
+    socket.off("rent_confirmed");
+  };
+}, []);
+
+  const handleNotificationPress = (item) => {
+    // 1. Mark as read locally
+    setNotifications((prev) => {
+  const updated = [newNotif, ...prev];
+  AsyncStorage.setItem("notifications", JSON.stringify(updated));
+  return updated;
+});
+
+    // 2. Navigate if a route is defined
+    if (item.navigateTo) {
+      navigation.navigate(item.navigateTo, item.params || {});
+    }
+  };
+
+  const markAllRead = () => {
+    setNotifications((prev) =>
+  prev.map((n) =>
+    n.id === item.id ? { ...n, read: true } : n
+  )
+);
+  };
 
   const getIcon = (type) => {
     switch (type) {
@@ -54,25 +157,26 @@ export default function NotificationScreen({ navigation }) {
     }
   };
 
-  const renderItem = ({ item, index }) => {
+  const renderItem = ({ item }) => {
     const iconData = getIcon(item.type);
-    
+
     return (
-      <TouchableOpacity 
+      <TouchableOpacity
         activeOpacity={0.7}
+        onPress={() => handleNotificationPress(item)}
         style={[
-          styles.card, 
-          { 
+          styles.card,
+          {
             backgroundColor: theme.card,
             borderLeftColor: item.read ? "transparent" : theme.primary,
-            borderLeftWidth: 4 
-          }
+            borderLeftWidth: 4,
+          },
         ]}
       >
         <View style={[styles.iconContainer, { backgroundColor: iconData.color + "15" }]}>
           <Ionicons name={iconData.name} size={24} color={iconData.color} />
         </View>
-        
+
         <View style={styles.textContainer}>
           <View style={styles.row}>
             <Text style={[styles.title, { color: theme.text }]}>{item.title}</Text>
@@ -89,17 +193,19 @@ export default function NotificationScreen({ navigation }) {
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <TopBar
-        username=""
-        onNotificationPress={() => {}}
+        showBackButton={true} // Usually good for notification screens
+        title="Notifications"
         onProfilePress={() => navigation.navigate("Profile")}
       />
-      
+
       <View style={styles.headerRow}>
-        <Text style={[styles.header, { color: theme.text }]}>Notifications</Text>
-        {notifications.length > 0 && (
-            <TouchableOpacity>
-                <Text style={{ color: theme.primary, fontWeight: "600", fontSize: 13 }}>Mark all read</Text>
-            </TouchableOpacity>
+        <Text style={[styles.header, { color: theme.text }]}>Updates</Text>
+        {notifications.some(n => !n.read) && (
+          <TouchableOpacity onPress={markAllRead}>
+            <Text style={{ color: theme.primary, fontWeight: "600", fontSize: 13 }}>
+              Mark all read
+            </Text>
+          </TouchableOpacity>
         )}
       </View>
 
@@ -109,11 +215,10 @@ export default function NotificationScreen({ navigation }) {
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
           contentContainerStyle={styles.list}
-          showsVerticalScrollIndicator={false}
         />
       ) : (
         <View style={styles.emptyContainer}>
-          <MaterialCommunityIcons name="bell-off-outline" size={80} color={theme.subText} opacity={0.2} />
+          <MaterialCommunityIcons name="bell-off-outline" size={80} color={theme.subText} style={{ opacity: 0.2 }} />
           <Text style={[styles.emptyText, { color: theme.subText }]}>All caught up!</Text>
           <Text style={[styles.emptySubText, { color: theme.subText }]}>No new notifications found.</Text>
         </View>
@@ -132,48 +237,16 @@ const styles = StyleSheet.create({
     marginTop: 20,
     marginBottom: 10,
   },
-  header: {
-    fontSize: 24,
-    fontWeight: "800",
-    letterSpacing: -0.5,
-  },
+  header: { fontSize: 24, fontWeight: "800" },
   list: { padding: 20, paddingBottom: 100 },
-  card: {
-    flexDirection: "row",
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-    alignItems: "center",
-    elevation: 2,
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowOffset: { width: 0, height: 2 },
-  },
-  iconContainer: {
-    width: 50,
-    height: 50,
-    borderRadius: 15,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  textContainer: {
-    flex: 1,
-    marginLeft: 15,
-  },
-  row: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
+  card: { flexDirection: "row", borderRadius: 16, padding: 16, marginBottom: 12, alignItems: "center", elevation: 2, shadowOpacity: 0.05 },
+  iconContainer: { width: 50, height: 50, borderRadius: 15, justifyContent: "center", alignItems: "center" },
+  textContainer: { flex: 1, marginLeft: 15 },
+  row: { flexDirection: "row", justifyContent: "space-between" },
   title: { fontSize: 16, fontWeight: "700" },
-  time: { fontSize: 11, fontWeight: "500" },
-  message: { fontSize: 13, marginTop: 4, lineHeight: 18 },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingBottom: 100,
-  },
+  time: { fontSize: 11 },
+  message: { fontSize: 13, marginTop: 4 },
+  emptyContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
   emptyText: { fontSize: 18, fontWeight: "700", marginTop: 15 },
-  emptySubText: { fontSize: 14, marginTop: 5, opacity: 0.7 },
+  emptySubText: { fontSize: 14, marginTop: 5 },
 });

@@ -78,7 +78,7 @@ export const sendOtp = async (email) => {
 };
 /* ================= SEND RESET OTP ================= */
 export const sendResetOtp = async (email) => {
-  return safeFetch(`${CONFIG.BASE_URL}/api/auth/verify-reset-otp`, {
+  return safeFetch(`${CONFIG.BASE_URL}/api/auth/send-reset-otp`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

@@ -48,7 +48,7 @@ export default function DashboardScreen() {
           const parsedUser = JSON.parse(storedUser);
           setUserData(parsedUser);
 
-          if (parsedUser.role === "lender") {
+          if (parsedUser.role?.toLowerCase() === "lender"){
             await fetchMyCars();
           } else {
             await fetchCars();
@@ -75,35 +75,39 @@ export default function DashboardScreen() {
   /* ================= FETCH ALL CARS ================= */
 
   const fetchCars = async () => {
-    try {
-      const res = await fetch(
-        `${CONFIG.BASE_URL}${CONFIG.ENDPOINTS.CARS}`
-      );
+  try {
+    const url = `${CONFIG.BASE_URL}${CONFIG.ENDPOINTS.CARS}`;
+    console.log("FETCH URL:", url);
 
-      if (res.status === 401) {
-        await handleAuthError();
-        return;
-      }
+    const res = await fetch(url);
 
-      const data = await res.json();
-      setCars(Array.isArray(data) ? data : []);
-    } catch (err) {
-      console.log("FETCH CARS ERROR:", err);
-      setCars([]);
-    }
-  };
+    console.log("STATUS:", res.status);
 
+    const text = await res.text();   // 🔥 get raw response
+    console.log("RAW RESPONSE:", text);
+
+    const data = JSON.parse(text);   // convert manually
+
+    console.log("PARSED DATA:", data);
+
+    setCars(Array.isArray(data) ? data : []);
+  } catch (err) {
+    console.log("FETCH CARS ERROR:", err);
+    setCars([]);
+  }
+};
   /* ================= FETCH MY CARS ================= */
 
   const fetchMyCars = async () => {
     try {
       const token = await AsyncStorage.getItem("userToken");
+      console.log("TOKEN:", token);
 
       if (!token) {
         await handleAuthError();
         return;
       }
-
+console.log("LENDER API:", data);
       const res = await fetch(
         `${CONFIG.BASE_URL}${CONFIG.ENDPOINTS.CARS}/my-cars`,
         {
@@ -126,13 +130,17 @@ export default function DashboardScreen() {
 
   /* ================= SEARCH FILTER ================= */
 
-  const filteredCars = cars.filter((car) =>
-    (car.title || "")
-      .toLowerCase()
-      .includes(searchText.toLowerCase())
-  );
+  const filteredCars = cars.filter((car) => {
+  if (!searchText) return true;
 
-  const isLender = userData?.role === "lender";
+  return (car.title || "")
+    .toLowerCase()
+    .includes(searchText.toLowerCase());
+});
+
+
+
+  const isLender = userData?.role?.toLowerCase() === "lender";
 
   /* ================= LOCATION ================= */
 
@@ -151,14 +159,19 @@ export default function DashboardScreen() {
 
   /* ================= IMAGE HANDLING (FIXED) ================= */
 
-  const getCarImage = (car) => {
-    if (!car.images || car.images.length === 0) {
-      return require("../../assets/cars/i20.png");
-    }
+ const getCarImage = (car) => {
+  if (!car.images || car.images.length === 0) {
+    return require("../../assets/cars/i20.png");
+  }
 
-    return { uri: car.images[0] };
-  };
+  let img = car.images[0];
 
+  if (img.startsWith("http")) {
+    return { uri: img };
+  }
+
+  return { uri: `${CONFIG.BASE_URL}${img}` };
+};
   /* ================= UI ================= */
 
   return (
@@ -258,51 +271,34 @@ export default function DashboardScreen() {
           </Text>
         )}
 
-        {loading ? (
-          <ActivityIndicator
-            size="large"
-            color={theme.primary}
-            style={{ marginTop: 40 }}
-          />
-        ) : (
-          filteredCars.map((car) => (
-            <TouchableOpacity
-              key={car._id}
-              style={[
-                styles.carCard,
-                { backgroundColor: theme.card },
-              ]}
-              onPress={() =>
-                navigation.navigate("CarDetails", { car })
-              }
-            >
-              <Image
-                source={getCarImage(car)}
-                style={styles.carImage}
-              />
+      {loading ? (
+  <ActivityIndicator size="large" color={theme.primary} />
+) : filteredCars.length > 0 ? (
+  filteredCars.map((car) => (
+    <TouchableOpacity
+      key={car._id}
+      style={[styles.carCard, { backgroundColor: theme.card }]}
+      onPress={() => navigation.navigate("CarDetails", { car })}
+    >
+      <Image source={getCarImage(car)} style={styles.carImage} />
 
-              <View style={styles.carInfo}>
-                <Text
-                  style={[
-                    styles.carName,
-                    { color: theme.text },
-                  ]}
-                >
-                  {car.title}
-                </Text>
+      <View style={styles.carInfo}>
+        <Text style={[styles.carName, { color: theme.text }]}>
+          {car.title}
+        </Text>
 
-                <Text
-                  style={[
-                    styles.carPrice,
-                    { color: theme.primary },
-                  ]}
-                >
-                  ₹{car.price}/day
-                </Text>
-              </View>
-            </TouchableOpacity>
-          ))
-        )}
+        <Text style={[styles.carPrice, { color: theme.primary }]}>
+          ₹{car.price}/day
+        </Text>
+      </View>
+    </TouchableOpacity>
+  ))
+) : (
+  <Text style={{ color: theme.subText, marginTop: 20 }}>
+    No cars found
+  </Text>
+)}
+        
       </ScrollView>
 
       {isLender && (

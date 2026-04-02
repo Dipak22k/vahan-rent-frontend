@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import { loginUser } from "../../src/api/authApi";
 
-
 import {
   View,
   Text,
@@ -12,7 +11,7 @@ import {
   Alert,
 } from "react-native";
 
-import { Ionicons, FontAwesome5, FontAwesome6 } from "@expo/vector-icons";
+import { Ionicons, FontAwesome5 } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRole } from "../../src/context/RoleContext";
 
@@ -49,28 +48,34 @@ export default function LoginScreen({
     try {
       const data = await loginUser(email.toLowerCase().trim(), password);
 
-      /* ✅ Defensive Response Validation */
+      console.log("LOGIN RESPONSE:", data); // 🔥 DEBUG
+      
       if (!data?.token || !data?.user) {
         throw new Error("Invalid server response");
       }
 
-      const safeUser = {
-        name: data.user?.name || "",
-        email: data.user?.email || "",
-        role: normalizeRole(data.user?.role),
-      };
+    const safeUser = {
+  _id: data.user?._id,
+  name: data.user?.name || "",
+  email: data.user?.email || "",
+  role: normalizeRole(data.user?.role),
+  avatar: data.user?.avatar || null, // ✅ ADD THIS LINE
+};
+await AsyncStorage.setItem("userToken", data.token);
+await AsyncStorage.setItem("userData", JSON.stringify({
+  ...safeUser,
+  avatar: data.user?.avatar || null,
+}));
 
-      await AsyncStorage.multiSet([
-        ["userToken", data.token],
-        ["userData", JSON.stringify(safeUser)],
-      ]);
+// 🔥 FORCE WAIT (IMPORTANT FIX)
+const savedToken = await AsyncStorage.getItem("token");
+console.log("TOKEN AFTER SAVE:", savedToken);
 
-      setRole(safeUser.role);        // ✅ Always normalized
-      setUserData(safeUser);
-      setIsLoggedIn(true);
+setRole(safeUser.role);
+setUserData(safeUser);
+setIsLoggedIn(true);
     } catch (error) {
       console.log("LOGIN ERROR:", error);
-
       Alert.alert(
         "Login Failed",
         error.message || "Something went wrong. Try again."
@@ -135,21 +140,15 @@ export default function LoginScreen({
           <View style={styles.line} />
         </View>
 
+        {/* ✅ FIXED SOCIAL ROW */}
         <View style={styles.socialRow}>
           <TouchableOpacity style={styles.socialIconBox}>
-            <FontAwesome5 name="google" size={20} color="#003580" />
+            <FontAwesome5 name="google" size={22} color="#003580" />
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.socialIconBox}>
-            <FontAwesome5 name="facebook-f" size={20} color="#003580" />
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.socialIconBox}>
-            <FontAwesome5 name="linkedin-in" size={20} color="#003580" />
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.socialIconBox}>
-            <FontAwesome6 name="x-twitter" size={20} color="#003580" />
+            {/* Fixed icon name to "apple" */}
+            <FontAwesome5 name="apple" size={24} color="#003580" />
           </TouchableOpacity>
         </View>
 
@@ -163,7 +162,6 @@ export default function LoginScreen({
   );
 }
 
-/* ✅ STYLES UNCHANGED */
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F8FAFC", justifyContent: "center" },
   card: {
@@ -210,12 +208,13 @@ const styles = StyleSheet.create({
   or: { marginHorizontal: 10, color: "#9ca3af", fontSize: 12 },
   socialRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
+    justifyContent: "center", // ✅ Centers the icons
+    gap: 20,                  // ✅ Adds a clean gap between them
     marginBottom: 30,
   },
   socialIconBox: {
-    width: "22%",
-    aspectRatio: 1.5,
+    width: "45%",             // ✅ Wider box for better touch target
+    aspectRatio: 2,           // ✅ Sleeker rectangular shape
     borderWidth: 1,
     borderColor: "#e5e7eb",
     borderRadius: 8,

@@ -1,5 +1,5 @@
 const CONFIG = {
-  BACKEND_IP: "10.98.204.241",   // 🔥 CHANGE ONLY THIS
+  BACKEND_IP: "10.122.71.15",
   PORT: "5000",
 
   get BASE_URL() {
@@ -9,14 +9,19 @@ const CONFIG = {
   ENDPOINTS: {
     LOGIN: "/api/auth/login",
     REGISTER: "/api/auth/register",
+    GOOGLE_AUTH: "/api/auth/google",
 
     USERS: "/users",
     CARS: "/cars",
-    CHAT: "/chat",
+    CHAT: "/api/chat",   // ✅ fixed earlier
     UPDATE_CAR: "/cars/update",
-    UPDATE_AVATAR: "/users/update-avatar",
+    UPDATE_AVATAR: "/api/auth/update-avatar",
+    USER_KYC: "/api/user/submit-kyc",
+    UPLOAD: "/upload",
 
-    UPLOAD: "/upload",   // ⭐ ADD THIS (IMPORTANT)
+     KYC_VERIFY: "/api/kyc/verify",      // ✅ ADD THIS
+    KYC_UPLOAD_ID: "/api/kyc/upload-id",
+    KYC_UPLOAD_SELFIE: "/api/kyc/upload-selfie",
   },
 };
 

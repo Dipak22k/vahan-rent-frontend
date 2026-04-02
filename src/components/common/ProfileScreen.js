@@ -1,10 +1,4 @@
-import React, {
-  useEffect,
-  useState,
-  useRef,
-  useCallback,
-  useMemo,
-} from "react";
+import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
 import {
   View,
   Text,
@@ -13,98 +7,86 @@ import {
   ScrollView,
   Animated,
   Image,
-  Dimensions,
-  Modal,
-  StatusBar,
+  Alert,
+  ActivityIndicator,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
-import KYCMasterScreen from "../../kyc/KYCMasterScreen";
-import TopBar from "./TopBar";
+
+import TopBar from "./TopBar"; 
 import { useTheme } from "../../../src/context/ThemeContext";
 import CONFIG from "../../../src/api/config";
 
-const { width } = Dimensions.get("window");
+const getImageUrl = (path) => {
+  if (!path) return null;
+  if (path.startsWith("http")) return path;
+  const cleanPath = path.startsWith("/") ? path : `/${path}`;
+  return `${CONFIG.BASE_URL}${cleanPath}`;
+};
 
 export default function ProfileScreen({ navigation, route, setIsLoggedIn }) {
   const { theme } = useTheme();
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  // Params
   const profileId = route?.params?.userId;
+  const isExternal = route?.params?.isExternal || false;
 
   // State
   const [loggedInUserId, setLoggedInUserId] = useState(null);
   const [user, setUser] = useState({ name: "", email: "", role: "" });
   const [profileImage, setProfileImage] = useState(null);
-  const [logoutVisible, setLogoutVisible] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
 
-  // Derived State
-  const isOwnProfile = useMemo(
-    () => !profileId || profileId === loggedInUserId,
-    [profileId, loggedInUserId],
-  );
-
-  // Animations
-  const modalScale = useRef(new Animated.Value(0.8)).current;
-  const modalOpacity = useRef(new Animated.Value(0)).current;
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(20)).current;
+  const isOwnProfile = useMemo(() => {
+    if (isExternal) return false;
+    if (!profileId) return true;
+    return String(profileId) === String(loggedInUserId);
+  }, [profileId, loggedInUserId, isExternal]);
 
   const loadProfile = useCallback(async () => {
     try {
+      setLoading(true);
       const storedUser = await AsyncStorage.getItem("userData");
-      const storedImage = await AsyncStorage.getItem("profileImage");
-      let parsedUser = null;
+      const parsedLoggedInUser = storedUser ? JSON.parse(storedUser) : null;
+      if (parsedLoggedInUser?._id) setLoggedInUserId(parsedLoggedInUser._id);
 
-      if (storedUser) {
-        parsedUser = JSON.parse(storedUser);
-        setLoggedInUserId(parsedUser._id);
-      }
-
-      if (profileId && parsedUser?._id !== profileId) {
-        const res = await fetch(
-          `${CONFIG.BASE_URL}${CONFIG.ENDPOINTS.USERS}/${profileId}`,
-        );
+      if (isExternal && profileId) {
+        const res = await fetch(`${CONFIG.BASE_URL}/api/auth/users/${profileId}`);
         const data = await res.json();
-        if (!res.ok) throw new Error(data.message);
+        if (!res.ok) throw new Error(data.message || "User not found");
 
         const profile = data.user || data.data || data;
         setUser({
-          name: profile.name || "",
-          email: profile.email || "",
-          role: profile.role?.toUpperCase() || "MEMBER",
+          name: profile.name || "User",
+          email: profile.email || "N/A",
+          role: profile.role || "MEMBER",
         });
-        setProfileImage(profile.avatar ?? null);
-        return;
+        setProfileImage(profile.avatar || null);
+      } else if (parsedLoggedInUser) {
+        setUser(parsedLoggedInUser);
+        setProfileImage(parsedLoggedInUser.avatar || null);
       }
-
-      if (parsedUser) setUser(parsedUser);
-      if (storedImage) setProfileImage(storedImage);
     } catch (err) {
-      console.error("PROFILE LOAD ERROR:", err);
-    }
-  }, [profileId]);
-
-  useEffect(() => {
-    loadProfile();
-    Animated.parallel([
+      console.error("PROFILE_LOAD_ERROR:", err);
+      Alert.alert("Error", "Failed to load profile data.");
+    } finally {
+      setLoading(false);
       Animated.timing(fadeAnim, {
         toValue: 1,
-        duration: 600,
+        duration: 800,
         useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 600,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [loadProfile]);
+      }).start();
+    }
+  }, [profileId, isExternal, fadeAnim]);
 
   useFocusEffect(
     useCallback(() => {
       loadProfile();
-    }, [loadProfile]),
+    }, [loadProfile])
   );
 
   const pickImage = async () => {
@@ -112,13 +94,14 @@ export default function ProfileScreen({ navigation, route, setIsLoggedIn }) {
     const result = await ImagePicker.launchImageLibraryAsync({
       allowsEditing: true,
       aspect: [1, 1],
-      quality: 0.7,
+      quality: 0.5,
     });
 
     if (result.canceled) return;
 
     try {
-      const token = await AsyncStorage.getItem("userToken");
+      setUploading(true);
+      const token = await AsyncStorage.getItem("token") || await AsyncStorage.getItem("userToken");
       const formData = new FormData();
       formData.append("avatar", {
         uri: result.assets[0].uri,
@@ -126,356 +109,178 @@ export default function ProfileScreen({ navigation, route, setIsLoggedIn }) {
         type: "image/jpeg",
       });
 
-      const res = await fetch(
-        `${CONFIG.BASE_URL}${CONFIG.ENDPOINTS.UPDATE_AVATAR}`,
-        {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
-          body: formData,
-        },
-      );
+      const res = await fetch(`${CONFIG.BASE_URL}/api/auth/update-avatar`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
 
       const data = await res.json();
-      if (res.ok) {
-        setProfileImage(data.avatar);
-        await AsyncStorage.setItem("profileImage", data.avatar);
-      }
-    } catch (err) {
-      console.log("IMAGE UPLOAD ERROR:", err);
+      if (!res.ok) throw new Error(data.message || "Upload failed");
+
+      const avatarUrl = data.avatar || data?.user?.avatar;
+      setProfileImage(avatarUrl);
+      const updatedUser = { ...user, avatar: avatarUrl };
+      await AsyncStorage.setItem("userData", JSON.stringify(updatedUser));
+    } catch (err) { 
+      Alert.alert("Error", err.message);
+    } finally {
+      setUploading(false);
     }
   };
 
-  const toggleLogoutModal = (show) => {
-    if (show) {
-      setLogoutVisible(true);
-      Animated.parallel([
-        Animated.spring(modalScale, {
-          toValue: 1,
-          friction: 8,
-          useNativeDriver: true,
-        }),
-        Animated.timing(modalOpacity, {
-          toValue: 1,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    } else {
-      Animated.parallel([
-        Animated.timing(modalScale, {
-          toValue: 0.8,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-        Animated.timing(modalOpacity, {
-          toValue: 0,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-      ]).start(() => setLogoutVisible(false));
-    }
+  const handleLogout = () => {
+    Alert.alert("Logout", "Are you sure you want to exit?", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Logout", style: "destructive", onPress: async () => {
+          await AsyncStorage.multiRemove(["userData", "token", "userToken"]);
+          setIsLoggedIn(false);
+      }},
+    ]);
   };
 
-  const confirmLogout = async () => {
-    await AsyncStorage.multiRemove(["userData", "profileImage", "userToken"]);
-    setIsLoggedIn(false);
-  };
-
-  // Sub-Components for cleanliness
-  const InfoRow = ({ label, value, icon }) => (
-    <View style={styles.infoRow}>
-      <View style={styles.infoLeft}>
-        <Ionicons
-          name={icon}
-          size={20}
-          color={theme.primary}
-          style={styles.infoIcon}
-        />
-        <Text style={[styles.label, { color: theme.subText }]}>{label}</Text>
+  if (loading) {
+    return (
+      <View style={[styles.center, { backgroundColor: theme.background }]}>
+        <ActivityIndicator size="large" color={theme.primary} />
       </View>
-      <Text style={[styles.value, { color: theme.text }]} numberOfLines={1}>
-        {value || "—"}
-      </Text>
-    </View>
-  );
+    );
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      <StatusBar barStyle={theme.dark ? "light-content" : "dark-content"} />
-      <TopBar />
+      <View style={{ backgroundColor: theme.mode === 'dark' ? theme.card : '#EEF2FF' }}>
+         <TopBar 
+            showBackButton={!isOwnProfile} 
+            title={isOwnProfile ? "My Profile" : "User Profile"} 
+            onNotificationPress={() => navigation.navigate("Notifications")}
+         />
+      </View>
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-      >
-        {/* Header Section */}
-        <Animated.View
-          style={[
-            styles.header,
-            {
-              backgroundColor: theme.card,
-              opacity: fadeAnim,
-              transform: [{ translateY: slideAnim }],
-            },
-          ]}
-        >
-          <TouchableOpacity
-            activeOpacity={0.8}
-            onPress={pickImage}
-            style={styles.avatarWrapper}
-          >
-            <View
-              style={[
-                styles.avatarContainer,
-                { backgroundColor: theme.background },
-              ]}
-            >
-              {profileImage ? (
-                <Image
-                  source={{
-                    uri: `${profileImage}${profileImage.includes("?") ? "&" : "?"}t=${Date.now()}`,
-                  }}
-                  style={styles.profileImage}
-                />
-              ) : (
-                <View
-                  style={[
-                    styles.initialsContainer,
-                    { backgroundColor: theme.primary },
-                  ]}
-                >
-                  <Text style={styles.initialsText}>
-                    {user.name?.charAt(0) || "U"}
-                  </Text>
+      <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
+        <View style={[
+          styles.headerBackground, 
+          { backgroundColor: theme.mode === 'dark' ? theme.card : '#EEF2FF' }
+        ]}>
+            <Animated.View style={[styles.profileHeader, { opacity: fadeAnim }]}>
+              <TouchableOpacity onPress={pickImage} disabled={!isOwnProfile} activeOpacity={0.8}>
+                <View style={[styles.avatarWrapper, { borderColor: theme.background }]}>
+                  {profileImage ? (
+                    <Image source={{ uri: getImageUrl(profileImage) }} style={styles.avatar} />
+                  ) : (
+                    <View style={[styles.initials, { backgroundColor: theme.primary }]}>
+                      <Text style={styles.initialText}>{user.name?.charAt(0).toUpperCase()}</Text>
+                    </View>
+                  )}
+                  {isOwnProfile && (
+                    <View style={[styles.editIcon, { backgroundColor: theme.primary, borderColor: theme.background }]}>
+                      <Ionicons name="camera" size={16} color="white" />
+                    </View>
+                  )}
+                  {uploading && <ActivityIndicator style={styles.loader} color="#fff" />}
                 </View>
-              )}
-            </View>
-          </TouchableOpacity>
-          <Text style={[styles.userName, { color: theme.text }]}>
-            {user.name || "User Name"}
-          </Text>
-        </Animated.View>
-
-        {/* Info Section */}
-        <View style={styles.section}>
-          <View style={[styles.card, { backgroundColor: theme.card }]}>
-            <InfoRow
-              icon="person-outline"
-              label="Full Name"
-              value={user.name}
-            />
-            <InfoRow
-              icon="mail-outline"
-              label="Email Address"
-              value={user.email}
-            />
-            <InfoRow
-              icon="shield-checkmark-outline"
-              label="Account Role"
-              value={user.role}
-            />
-          </View>
+              </TouchableOpacity>
+              
+              <Text style={[styles.name, { color: theme.text }]}>{user.name}</Text>
+              
+              <View style={[styles.badge, { backgroundColor: theme.mode === 'dark' ? 'rgba(99,102,241,0.2)' : 'rgba(99,102,241,0.1)' }]}>
+                <Text style={[styles.badgeText, { color: theme.primary }]}>{user.role}</Text>
+              </View>
+            </Animated.View>
         </View>
 
-        {/* Buttons Section */}
-        <View style={styles.actionContainer}>
+        <View style={styles.content}>
+          <InfoRow icon="email-outline" label="Email Address" value={user.email} theme={theme} />
+          <InfoRow icon="shield-check-outline" label="Account Status" value="Verified" theme={theme} />
+          
+          <View style={[styles.divider, { backgroundColor: theme.mode === 'dark' ? '#334155' : '#F1F5F9' }]} />
+
           {isOwnProfile ? (
             <>
-              <TouchableOpacity
-                style={[styles.kycButton, { backgroundColor: theme.primary }]}
-                onPress={() => navigation.navigate("KYCMaster")}
-              >
-                <Text style={styles.buttonText}>Complete KYC Verification</Text>
-              </TouchableOpacity>
+              <Text style={[styles.sectionTitle, { color: theme.subText }]}>Settings</Text>
+              
+              <MenuOption 
+                icon="settings-outline" 
+                label="Account Settings" 
+                theme={theme} 
+                onPress={() => navigation.navigate("KYCMaster")} 
+              />
+              
+              <MenuOption 
+                icon="bell-outline" 
+                label="Notifications" 
+                theme={theme} 
+                onPress={() => navigation.navigate("Notifications")}
+              />
 
-              <TouchableOpacity
-                style={[
-                  styles.logoutButton,
-                  {
-                    borderColor: theme.error,
-                    backgroundColor: theme.dark
-                      ? "transparent"
-                      : theme.error + "15",
-                  },
-                ]}
-                onPress={() => toggleLogoutModal(true)}
-              >
-                <Text style={[styles.buttonText, { color: theme.error }]}>
-                  Sign Out
-                </Text>
+              <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
+                <Ionicons name="log-out-outline" size={22} color="#EF4444" />
+                <Text style={styles.logoutText}>Logout</Text>
               </TouchableOpacity>
             </>
           ) : (
-            <TouchableOpacity
-              style={[styles.kycButton, { backgroundColor: theme.primary }]}
-              onPress={() =>
-                navigation.navigate("Chat", { lenderId: profileId })
-              }
+            <TouchableOpacity 
+              style={[styles.chatBtn, { backgroundColor: theme.primary }]} 
+              onPress={() => navigation.navigate("Chat", { lenderId: profileId, otherUser: user })}
             >
-              <Text style={styles.buttonText}>Request to Chat</Text>
+              <Ionicons name="chatbubble-ellipses" size={22} color="white" />
+              <Text style={styles.chatBtnText}>Message {user.name.split(' ')[0]}</Text>
             </TouchableOpacity>
           )}
         </View>
       </ScrollView>
-
-      {/* FIXED LOGOUT MODAL */}
-      <Modal
-        transparent
-        visible={logoutVisible}
-        animationType="none"
-        onRequestClose={() => toggleLogoutModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <Animated.View
-            style={[
-              styles.modalContainer,
-              {
-                backgroundColor: theme.card,
-                opacity: modalOpacity,
-                transform: [{ scale: modalScale }],
-              },
-            ]}
-          >
-            <View
-              style={[
-                styles.iconCircle,
-                { backgroundColor: theme.error + "15" },
-              ]}
-            >
-              <Ionicons name="log-out" size={32} color={theme.error} />
-            </View>
-
-            <Text style={[styles.modalTitle, { color: theme.text }]}>
-              Sign Out
-            </Text>
-            <Text style={[styles.modalSubTitle, { color: theme.subText }]}>
-              Are you sure you want to log out?
-            </Text>
-
-            <View style={styles.modalActionRow}>
-              <TouchableOpacity
-                style={[
-                  styles.modalBtn,
-                  {
-                    backgroundColor: theme.background,
-                    borderColor: theme.border || "#eee",
-                    borderWidth: 1,
-                  },
-                ]}
-                onPress={() => toggleLogoutModal(false)}
-              >
-                <Text style={{ color: theme.text, fontWeight: "700" }}>
-                  Cancel
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.modalBtn, { backgroundColor: theme.error }]}
-                onPress={confirmLogout}
-              >
-                <Text style={{ color: theme.text, fontWeight: "700" }}>
-                  Logout
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </Animated.View>
-        </View>
-      </Modal>
     </View>
   );
 }
 
+// Reusable Components
+const InfoRow = ({ icon, label, value, theme }) => (
+  <View style={styles.infoRow}>
+    <View style={[styles.iconCircle, { backgroundColor: theme.mode === 'dark' ? '#334155' : '#F1F5F9' }]}>
+      <MaterialCommunityIcons name={icon} size={20} color={theme.primary} />
+    </View>
+    <View style={{ marginLeft: 15 }}>
+      <Text style={[styles.infoLabel, { color: theme.subText }]}>{label}</Text>
+      <Text style={[styles.infoValue, { color: theme.text }]}>{value}</Text>
+    </View>
+  </View>
+);
+
+const MenuOption = ({ icon, label, theme, onPress }) => (
+  <TouchableOpacity style={styles.menuItem} onPress={onPress} activeOpacity={0.7}>
+    <View style={[styles.iconCircle, { backgroundColor: theme.mode === 'dark' ? '#1E293B' : '#F8FAFC' }]}>
+      <Ionicons name={icon} size={20} color={theme.subText} />
+    </View>
+    <Text style={[styles.menuLabel, { color: theme.text }]}>{label}</Text>
+    <Ionicons name="chevron-forward" size={18} color={theme.subText} />
+  </TouchableOpacity>
+);
+
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  scrollContent: { paddingTop: 10, paddingBottom: 40 },
-  header: {
-    alignItems: "center",
-    paddingVertical: 30,
-    marginHorizontal: 15,
-    borderRadius: 30,
-    marginTop: 10,
-    elevation: 3,
-  },
-  avatarWrapper: { marginBottom: 15 },
-  avatarContainer: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    overflow: "hidden",
-  },
-  profileImage: { width: "100%", height: "100%" },
-  initialsContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  initialsText: { color: "white", fontSize: 36, fontWeight: "bold" },
-  userName: { fontSize: 22, fontWeight: "800" },
-  section: { paddingHorizontal: 20, marginTop: 25 },
-  card: { borderRadius: 20, padding: 16 },
-  infoRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingVertical: 12,
-  },
-  infoLeft: { flexDirection: "row", alignItems: "center" },
-  infoIcon: { marginRight: 12 },
-  label: { fontSize: 14, fontWeight: "600" },
-  value: { fontWeight: "700", fontSize: 15 },
-  actionContainer: { paddingHorizontal: 20, marginTop: 30 },
-  kycButton: {
-    padding: 18,
-    borderRadius: 16,
-    alignItems: "center",
-    marginBottom: 15,
-  },
-  logoutButton: {
-    padding: 18,
-    borderRadius: 16,
-    alignItems: "center",
-    borderWidth: 1.5,
-  },
-  buttonText: { fontWeight: "700", fontSize: 16 },
-
-  // Modal Specific Styles
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.7)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
-  },
-  modalContainer: {
-    width: "90%",
-    borderRadius: 25,
-    padding: 25,
-    alignItems: "center",
-    elevation: 10,
-  },
-  iconCircle: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 15,
-  },
-  modalTitle: { fontSize: 20, fontWeight: "800", marginBottom: 8 },
-  modalSubTitle: {
-    fontSize: 14,
-    textAlign: "center",
-    marginBottom: 25,
-    lineHeight: 20,
-  },
-  modalActionRow: {
-    flexDirection: "row",
-    width: "100%",
-    justifyContent: "space-between",
-  },
-  modalBtn: {
-    flex: 0.48,
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: "center",
-  },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  headerBackground: { borderBottomLeftRadius: 35, borderBottomRightRadius: 35, paddingBottom: 35, paddingTop: 10, alignItems: 'center' },
+  profileHeader: { alignItems: 'center' },
+  avatarWrapper: { width: 110, height: 110, borderRadius: 55, borderWidth: 4, backgroundColor: '#fff' },
+  avatar: { width: '100%', height: '100%', borderRadius: 55 },
+  initials: { width: '100%', height: '100%', borderRadius: 55, justifyContent: 'center', alignItems: 'center' },
+  initialText: { color: 'white', fontSize: 38, fontWeight: 'bold' },
+  editIcon: { position: 'absolute', bottom: 2, right: 2, padding: 6, borderRadius: 15, borderWidth: 2 },
+  loader: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: 55 },
+  name: { fontSize: 22, fontWeight: '800', marginTop: 15 },
+  badge: { paddingHorizontal: 14, paddingVertical: 5, borderRadius: 20, marginTop: 8 },
+  badgeText: { fontWeight: 'bold', fontSize: 11, textTransform: 'uppercase' },
+  content: { paddingHorizontal: 25, paddingTop: 25 },
+  sectionTitle: { fontSize: 13, fontWeight: '700', marginBottom: 15, textTransform: 'uppercase' },
+  infoRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 22 },
+  iconCircle: { width: 42, height: 42, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  infoLabel: { fontSize: 11, fontWeight: '600' },
+  infoValue: { fontSize: 15, fontWeight: '600' },
+  divider: { height: 1, marginVertical: 10, marginBottom: 20 },
+  menuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14 },
+  menuLabel: { flex: 1, marginLeft: 15, fontSize: 16, fontWeight: '500' },
+  logoutBtn: { flexDirection: 'row', alignItems: 'center', marginTop: 35, justifyContent: 'center' },
+  logoutText: { color: '#EF4444', fontWeight: 'bold', marginLeft: 10, fontSize: 16 },
+  chatBtn: { flexDirection: 'row', height: 56, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
+  chatBtnText: { color: 'white', fontWeight: 'bold', fontSize: 16, marginLeft: 10 },
 });
