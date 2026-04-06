@@ -1,5 +1,5 @@
 const CONFIG = {
-  BACKEND_IP: "10.122.71.15",
+  BACKEND_IP: "192.168.1.10",
   PORT: "5000",
 
   get BASE_URL() {
