@@ -20,8 +20,9 @@ import { useRoute } from "@react-navigation/native";
 import { useTheme } from "../../src/context/ThemeContext";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import BottomSheet, { BottomSheetView } from "@gorhom/bottom-sheet";
+import { useFocusEffect } from "@react-navigation/native";
 
-const socket = io("http://10.122.71.15:5000");
+const socket = io("http://192.168.1.10:5000");
 const { width } = Dimensions.get("window");
 
 export default function ChatScreen() {
@@ -55,36 +56,58 @@ export default function ChatScreen() {
   }, []);
 
   // 🔥 SOCKET CONNECTION
-  useEffect(() => {
-    if (!chatId) return;
+ // 🔥 SOCKET CONNECTION
+useEffect(() => {
+  if (!chatId) return;
 
-    socket.emit("join_chat", chatId);
+  socket.emit("join_chat", chatId);
 
-    socket.on("receive_message", (msg) => {
-      setMessages((prev) => [...prev, msg]);
-    });
+  socket.on("receive_message", (msg) => {
+    setMessages((prev) => [...prev, msg]);
+  });
 
-    socket.on("chat_status_updated", (data) => {
-      if (data.chatId === chatId) {
-        setChatStatus(data.status);
-        if (data.finalStatus) {
-          setFinalStatus(data.finalStatus);
+  socket.on("chat_status_updated", (data) => {
+    if (data.chatId === chatId) {
+      setChatStatus(data.status);
+      if (data.finalStatus) {
+        setFinalStatus(data.finalStatus);
+      }
+    }
+  });
+
+  socket.on("rent_confirmed", ( data) => {
+    if (data.chatId === chatId) {
+      setFinalStatus("confirmed");
+    }
+  });
+
+
+  return () => {
+    socket.off("receive_message");
+    socket.off("chat_status_updated");
+    socket.off("rent_confirmed");``
+  };
+}, [chatId]);
+
+// 🔥 KYC CHECK (CORRECT PLACE)
+useFocusEffect(
+  React.useCallback(() => {
+    const checkKYC = async () => {
+      try {
+        const userData = JSON.parse(await AsyncStorage.getItem("userData"));
+
+        if (userData?.kyc?.status) {
+          setKycStatus(userData.kyc.status);
         }
+      } catch (err) {
+        console.log("KYC LOAD ERROR", err);
       }
-    });
-
-    socket.on("rent_confirmed", (data) => {
-      if (data.chatId === chatId) {
-        setFinalStatus("confirmed");
-      }
-    });
-
-    return () => {
-      socket.off("receive_message");
-      socket.off("chat_status_updated");
-      socket.off("rent_confirmed"); // ✅ cleanup added
     };
-  }, [chatId]);
+
+    checkKYC();
+  }, [])
+);
+
 
   const handleSend = () => {
     if (!message.trim() || chatStatus !== "accepted") return;
@@ -103,21 +126,6 @@ export default function ChatScreen() {
   };
 
   /* CHECK KYC */
-  useEffect(() => {
-  const checkKYC = async () => {
-    try {
-      const userData = JSON.parse(await AsyncStorage.getItem("userData"));
-
-      if (userData?.kyc?.status) {
-        setKycStatus(userData.kyc.status);
-      }
-    } catch (err) {
-      console.log("KYC LOAD ERROR", err);
-    }
-  };
-
-  checkKYC();
-}, []);
 
 
 

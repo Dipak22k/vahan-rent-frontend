@@ -63,10 +63,14 @@ export default function ResetPasswordScreen({ navigation, route }) {
   "Password updated! Please login with your new password.",
   [
     {
-      text: "Login",
       onPress: async () => {
-        await AsyncStorage.multiRemove(["userData", "userToken"]);
-      },
+  await AsyncStorage.multiRemove(["userData", "userToken"]);
+
+  navigation.reset({
+    index: 0,
+    routes: [{ name: "Login" }],
+  });
+}
     },
   ]
 );
