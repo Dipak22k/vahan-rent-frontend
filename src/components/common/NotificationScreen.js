@@ -19,68 +19,35 @@ export default function NotificationScreen({ navigation }) {
   const { theme } = useTheme();
   const [notifications, setNotifications] = useState([]);
 
-useEffect(() => {
-  // ================= SOCKET EVENTS =================
-
-  socket.on("chat_status_updated", (data) => {
-    if (data.status === "accepted") {
-      const newNotif = {
-        id: Date.now().toString(),
-        title: "Request Accepted",
-        message: "Lender accepted your request. You can now chat.",
-        time: "Now",
-        type: "success",
-        read: false,
-        navigateTo: "Chat",
-        params: { lenderId: data.lenderId, carId: data.carId },
-      };
-
-      setNotifications((prev) => {
-        const updated = [newNotif, ...prev];
-        AsyncStorage.setItem("notifications", JSON.stringify(updated));
-        return updated;
-      });
-    }
-  });
-
-  socket.on("rent_confirmed", (data) => {
-    const newNotif = {
-      id: Date.now().toString(),
-      title: "Rent Confirmed",
-      message: "Your booking is confirmed. Pickup location shared.",
-      time: "Now",
-      type: "contract",
-      read: false,
-      navigateTo: "MyBookings",
-      params: { bookingId: data?.bookingId },
-    };
-
-    setNotifications((prev) => {
-      const updated = [newNotif, ...prev];
-      AsyncStorage.setItem("notifications", JSON.stringify(updated));
-      return updated;
-    });
-  });
-
-  // ================= KYC NOTIFICATIONS =================
-
-  const loadKYCNotifications = async () => {
+  // ================= LOAD STORED =================
+  const loadStoredNotifications = async () => {
     try {
       const stored =
         JSON.parse(await AsyncStorage.getItem("notifications")) || [];
-
       setNotifications(stored);
     } catch (err) {
-      console.log("NOTIFICATION LOAD ERROR", err);
+      console.log("LOAD ERROR:", err);
     }
   };
 
+  // ================= SAVE =================
+  const saveNotifications = async (data) => {
+    await AsyncStorage.setItem("notifications", JSON.stringify(data));
+  };
+
+  // ================= KYC CHECK =================
   const checkKYCStatus = async () => {
     try {
-      const userData = JSON.parse(await AsyncStorage.getItem("userData"));
-      const status = userData?.kyc?.status;
+      const token = await AsyncStorage.getItem("userToken");
 
-      if (!status) return;
+      const res = await fetch(`${CONFIG.BASE_URL}/api/kyc/status`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const data = await res.json();
+      const status = data.status;
 
       let message = "";
       let type = "warning";
@@ -88,10 +55,10 @@ useEffect(() => {
       if (status === "pending") {
         message = "Your KYC is under review ⏳";
       } else if (status === "verified") {
-        message = "KYC verified successfully ✅";
+        message = "KYC completed successfully ✅";
         type = "success";
       } else if (status === "rejected") {
-        message = "KYC failed ❌ Please try again";
+        message = "KYC rejected ❌ Please retry";
       }
 
       if (message) {
@@ -99,64 +66,165 @@ useEffect(() => {
           id: Date.now().toString(),
           title: "KYC Update",
           message,
-          time: "Now",
           type,
+          time: "Now",
           read: false,
         };
 
         setNotifications((prev) => {
           const updated = [newNotif, ...prev];
-          AsyncStorage.setItem("notifications", JSON.stringify(updated));
+          saveNotifications(updated);
           return updated;
         });
       }
     } catch (err) {
-      console.log("KYC NOTIF ERROR", err);
+      console.log("KYC ERROR:", err);
     }
   };
 
-  loadKYCNotifications();
-  checkKYCStatus();
+  // ================= SOCKET EVENTS =================
+  useEffect(() => {
+    loadStoredNotifications();
+    checkKYCStatus();
 
-  // ================= CLEANUP =================
+    // 🔥 CHAT STATUS UPDATE
+    socket.on("chat_status_updated", (data) => {
+      const { status, senderName, receiverName, role } = data;
 
-  return () => {
-    socket.off("chat_status_updated");
-    socket.off("rent_confirmed");
-  };
-}, []);
+      let message = "";
 
+      // 👤 BORROWER
+      if (role === "borrower") {
+        if (status === "accepted") {
+          message = `Lender (${receiverName}) accepted your request. You can start chatting`;
+        } else if (status === "rejected") {
+          message = `Lender (${receiverName}) rejected your request`;
+        } else {
+          message = `Request to ${receiverName} is pending`;
+        }
+      }
+
+      // 👤 LENDER
+      if (role === "lender") {
+        message = `New request received from ${senderName}`;
+      }
+
+      const newNotif = {
+        id: Date.now().toString(),
+        title: "Chat Update",
+        message,
+        type: status === "accepted" ? "success" : "warning",
+        time: "Now",
+        read: false,
+      };
+
+      setNotifications((prev) => {
+        const updated = [newNotif, ...prev];
+        saveNotifications(updated);
+        return updated;
+      });
+    });
+
+    // 🔥 RENT CONFIRMED
+    socket.on("rent_confirmed", (data) => {
+      const newNotif = {
+        id: Date.now().toString(),
+        title: "Rent Confirmed",
+        message: "Your booking is confirmed. Pickup location shared.",
+        type: "contract",
+        time: "Now",
+        read: false,
+        navigateTo: "MyBookings",
+        params: { bookingId: data?.bookingId },
+      };
+
+      setNotifications((prev) => {
+        const updated = [newNotif, ...prev];
+        saveNotifications(updated);
+        return updated;
+      });
+    });
+
+    // 🔥 CAR EVENTS
+    socket.on("car_updated", (data) => {
+      const newNotif = {
+        id: Date.now().toString(),
+        title: "Car Updated",
+        message: `Car "${data.carName}" updated successfully`,
+        type: "contract",
+        time: "Now",
+        read: false,
+      };
+
+      setNotifications((prev) => {
+        const updated = [newNotif, ...prev];
+        saveNotifications(updated);
+        return updated;
+      });
+    });
+
+    socket.on("car_listed", (data) => {
+      const newNotif = {
+        id: Date.now().toString(),
+        title: "Car Listed",
+        message: `Your car "${data.carName}" is now live 🚗`,
+        type: "success",
+        time: "Now",
+        read: false,
+      };
+
+      setNotifications((prev) => {
+        const updated = [newNotif, ...prev];
+        saveNotifications(updated);
+        return updated;
+      });
+    });
+
+    return () => {
+      socket.off("chat_status_updated");
+      socket.off("rent_confirmed");
+      socket.off("car_updated");
+      socket.off("car_listed");
+    };
+  }, []);
+
+  // ================= HANDLE CLICK =================
   const handleNotificationPress = (item) => {
-    // 1. Mark as read locally
     setNotifications((prev) => {
-  const updated = [newNotif, ...prev];
-  AsyncStorage.setItem("notifications", JSON.stringify(updated));
-  return updated;
-});
+      const updated = prev.map((n) =>
+        n.id === item.id ? { ...n, read: true } : n
+      );
+      saveNotifications(updated);
+      return updated;
+    });
 
-    // 2. Navigate if a route is defined
     if (item.navigateTo) {
       navigation.navigate(item.navigateTo, item.params || {});
     }
   };
 
+  // ================= MARK ALL =================
   const markAllRead = () => {
-    setNotifications((prev) =>
-  prev.map((n) =>
-    n.id === item.id ? { ...n, read: true } : n
-  )
-);
+    const updated = notifications.map((n) => ({ ...n, read: true }));
+    setNotifications(updated);
+    saveNotifications(updated);
   };
 
+  // ================= ICON =================
   const getIcon = (type) => {
     switch (type) {
-      case "success": return { name: "checkmark-circle", color: "#10B981" };
-      case "contract": return { name: "document-text", color: theme.primary };
-      case "warning": return { name: "alert-circle", color: "#F59E0B" };
-      default: return { name: "notifications", color: theme.subText };
+      case "success":
+        return { name: "checkmark-circle", color: "#10B981" };
+      case "contract":
+        return { name: "document-text", color: theme.primary };
+      case "warning":
+        return { name: "alert-circle", color: "#F59E0B" };
+      default:
+        return { name: "notifications", color: theme.subText };
     }
   };
 
+  // ================= RENDER =================
   const renderItem = ({ item }) => {
     const iconData = getIcon(item.type);
 
@@ -173,16 +241,28 @@ useEffect(() => {
           },
         ]}
       >
-        <View style={[styles.iconContainer, { backgroundColor: iconData.color + "15" }]}>
+        <View
+          style={[
+            styles.iconContainer,
+            { backgroundColor: iconData.color + "15" },
+          ]}
+        >
           <Ionicons name={iconData.name} size={24} color={iconData.color} />
         </View>
 
         <View style={styles.textContainer}>
           <View style={styles.row}>
-            <Text style={[styles.title, { color: theme.text }]}>{item.title}</Text>
-            <Text style={[styles.time, { color: theme.subText }]}>{item.time}</Text>
+            <Text style={[styles.title, { color: theme.text }]}>
+              {item.title}
+            </Text>
+            <Text style={[styles.time, { color: theme.subText }]}>
+              {item.time}
+            </Text>
           </View>
-          <Text style={[styles.message, { color: theme.subText }]} numberOfLines={2}>
+          <Text
+            style={[styles.message, { color: theme.subText }]}
+            numberOfLines={2}
+          >
             {item.message}
           </Text>
         </View>
@@ -192,17 +272,13 @@ useEffect(() => {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      <TopBar
-        showBackButton={true} // Usually good for notification screens
-        title="Notifications"
-        onProfilePress={() => navigation.navigate("Profile")}
-      />
+      <TopBar showBackButton title="Notifications" />
 
       <View style={styles.headerRow}>
         <Text style={[styles.header, { color: theme.text }]}>Updates</Text>
-        {notifications.some(n => !n.read) && (
+        {notifications.some((n) => !n.read) && (
           <TouchableOpacity onPress={markAllRead}>
-            <Text style={{ color: theme.primary, fontWeight: "600", fontSize: 13 }}>
+            <Text style={{ color: theme.primary, fontWeight: "600" }}>
               Mark all read
             </Text>
           </TouchableOpacity>
@@ -218,35 +294,50 @@ useEffect(() => {
         />
       ) : (
         <View style={styles.emptyContainer}>
-          <MaterialCommunityIcons name="bell-off-outline" size={80} color={theme.subText} style={{ opacity: 0.2 }} />
-          <Text style={[styles.emptyText, { color: theme.subText }]}>All caught up!</Text>
-          <Text style={[styles.emptySubText, { color: theme.subText }]}>No new notifications found.</Text>
+          <MaterialCommunityIcons
+            name="bell-off-outline"
+            size={80}
+            color={theme.subText}
+            style={{ opacity: 0.2 }}
+          />
+          <Text style={[styles.emptyText, { color: theme.subText }]}>
+            All caught up!
+          </Text>
+          <Text style={[styles.emptySubText, { color: theme.subText }]}>
+            No new notifications found.
+          </Text>
         </View>
       )}
     </View>
   );
 }
 
+// ================= STYLES =================
 const styles = StyleSheet.create({
   container: { flex: 1 },
   headerRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 20,
-    marginTop: 20,
+    padding: 20,
+  },
+  header: { fontSize: 22, fontWeight: "bold" },
+  list: { padding: 20 },
+  card: {
+    flexDirection: "row",
+    padding: 15,
+    borderRadius: 12,
     marginBottom: 10,
   },
-  header: { fontSize: 24, fontWeight: "800" },
-  list: { padding: 20, paddingBottom: 100 },
-  card: { flexDirection: "row", borderRadius: 16, padding: 16, marginBottom: 12, alignItems: "center", elevation: 2, shadowOpacity: 0.05 },
-  iconContainer: { width: 50, height: 50, borderRadius: 15, justifyContent: "center", alignItems: "center" },
-  textContainer: { flex: 1, marginLeft: 15 },
+  iconContainer: {
+    width: 45,
+    height: 45,
+    borderRadius: 12,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  textContainer: { flex: 1, marginLeft: 12 },
   row: { flexDirection: "row", justifyContent: "space-between" },
-  title: { fontSize: 16, fontWeight: "700" },
-  time: { fontSize: 11 },
-  message: { fontSize: 13, marginTop: 4 },
+  title: { fontWeight: "bold" },
+  message: { marginTop: 5 },
   emptyContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
-  emptyText: { fontSize: 18, fontWeight: "700", marginTop: 15 },
-  emptySubText: { fontSize: 14, marginTop: 5 },
 });

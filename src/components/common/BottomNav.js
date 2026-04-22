@@ -28,7 +28,7 @@ const TABS = [
   },
   { key: "Chat", icon: require("../../../assets/icons/chat.png") },
   { key: "Contracts", icon: require("../../../assets/icons/contract.png") },
-  { key: "Insurance", icon: require("../../../assets/icons/insurance.png") },
+  { key: "Transactions", icon: require("../../../assets/icons/paymentHistory.png") },
 ];
 
 const TAB_WIDTH = TAB_BAR_WIDTH / TABS.length;

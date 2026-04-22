@@ -60,6 +60,9 @@ export default function LoginScreen({
   email: data.user?.email || "",
   role: normalizeRole(data.user?.role),
   avatar: data.user?.avatar || null, // ✅ ADD THIS LINE
+   // ✅ ADD THIS
+  kycStatus: data.user?.kycStatus || "not_started",
+  isKycComplete: data.user?.isKycComplete || false,
 };
 await AsyncStorage.setItem("userToken", data.token);
 await AsyncStorage.setItem("userData", JSON.stringify({
